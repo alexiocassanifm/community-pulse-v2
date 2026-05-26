@@ -1,0 +1,131 @@
+name: FairMind Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, ready_for_review, reopened]
+
+concurrency:
+  group: fairmind-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FAIRMIND_PROJECT_ID: "6a143e7317fa38cecf7eb195"
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Create FairMind MCP Config
+        env:
+          FAIRMIND_API_KEY: ${{ secrets.FAIRMIND_API_KEY }}
+        run: |
+          jq -n \
+            --arg url "https://project-context.fairmind.ai/mcp/mcp" \
+            --arg key "$FAIRMIND_API_KEY" \
+            '{
+              mcpServers: {
+                FairMind: {
+                  type: "http",
+                  url: $url,
+                  headers: { Authorization: ("Bearer " + $key) }
+                }
+              }
+            }' > /tmp/fairmind-mcp.json
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          claude_args: '--mcp-config /tmp/fairmind-mcp.json --allowedTools "mcp__FairMind__*,mcp__github__*,mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"'
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request and verify implementation coherence with FairMind requirements using a journal-first approach to save tokens.
+
+            Note: The PR branch is already checked out in the current working directory.
+            Use `gh pr comment` to post your review as a PR comment.
+            Use `mcp__github_inline_comment__create_inline_comment` to highlight specific code issues inline.
+            Only post GitHub comments — do not submit review text as messages.
+
+            ### Phase 1: Journal Check (always do this first)
+            1. Look for journal files in the PR diff under `.fairmind/journals/`. They follow naming `TASK-{ID}_{agent}_journal.md`.
+            2. If journal(s) found, read them. They contain: overview, work log, files modified, technical decisions, outcomes.
+            3. Extract the TASK IDs referenced in the journal filenames.
+
+            ### Phase 2: FairMind Task Lookup
+            1. Use `mcp__FairMind__General_list_work_sessions` with project_id `${{ env.FAIRMIND_PROJECT_ID }}` to find active sessions.
+            2. Use `mcp__FairMind__Studio_get_task` with the TASK IDs from the journal to get the task requirements, acceptance criteria, and implementation plan.
+            3. If no TASK ID found in journals or filenames, use PR title/branch to search tasks via `mcp__FairMind__Studio_list_development_tasks_by_session`.
+
+            ### Phase 3: Coherence Assessment
+            **If journal exists and is complete:**
+            - Compare journal's declared work (outcomes, files modified, decisions) against FairMind task requirements and acceptance criteria.
+            - This is a text-vs-text comparison — no need to read all code files.
+
+            **If journal is missing, incomplete, or declares incoherence:**
+            - Fall back to analyzing the actual code diff against FairMind task requirements.
+            - Check acceptance criteria coverage in the code changes.
+
+            ### Phase 4: Security Spot-Check
+            Even when journals are complete and coherence is "Aligned", spot-check the actual code diff for these categories:
+            1. **Crypto & hashing**: Is a salt/HMAC used? Are algorithms appropriate? (e.g., plain SHA-256 on small input spaces is vulnerable to rainbow tables)
+            2. **Input validation**: Is any client-provided value stored or used without type checking, length limits, or sanitization?
+            3. **Concurrency**: Are check-then-act patterns (SELECT then INSERT, read then write) protected against race conditions? (e.g., use upsert, unique constraints, or transactions)
+            4. **Auth/session config**: Do server-side clients disable autoRefreshToken and persistSession?
+            5. **Cookie handling**: Is cookie parsing done safely? (`document.cookie.includes()` is unreliable — proper parsing with `split('; ')` is required)
+
+            For each issue found, trace it back to determine:
+            - **Implementation bug**: Code deviates from spec — flag as standard code review issue
+            - **Specification gap**: Code faithfully follows spec, but the spec itself is flawed — flag as "Specification Gap" in the report, referencing the work package file and line
+
+            ### Phase 5: Report
+            Add a "## Requirements Coherence (FairMind)" section. Keep the report concise — if a section has no issues, collapse it to one line.
+
+            #### Summary
+            | Field | Value |
+            |-------|-------|
+            | User Story | US-{ID} — {title} |
+            | Tasks Verified | TASK-{ID}, TASK-{ID}, ... |
+            | Journal Status | Present & Complete / Present & Incomplete / Missing |
+            | Overall Coherence | Aligned / Partially Aligned / Divergent |
+
+            #### Acceptance Criteria Checklist
+            For EACH task, list every acceptance criterion from the FairMind task definition:
+
+            **TASK-{ID}: {title}**
+            | # | Acceptance Criterion | Status | Notes |
+            |---|---------------------|--------|-------|
+            | 1 | {criterion text}    | pass/warn/fail | {brief note if warn or fail} |
+
+            #### Security Spot-Check
+            | Category | Status | Details |
+            |----------|--------|---------|
+            | Crypto & hashing | pass/warn/fail | {findings or "No issues"} |
+            | Input validation | pass/warn/fail | {findings or "No issues"} |
+            | Concurrency | pass/warn/fail | {findings or "No issues"} |
+            | Auth/session config | pass/warn/fail | {findings or "No issues"} |
+            | Cookie handling | pass/warn/fail | {findings or "No issues"} |
+
+            #### Specification Gaps (only if found)
+            If any issue traces back to the work package spec rather than the implementation:
+            | Issue | Spec File | What the spec says | What it should say |
+            |-------|-----------|-------------------|-------------------|
+
+            If no spec gaps found, write: "No specification gaps identified."
+
+            #### Scope Check
+            - Scope creep (journal declares work not in task): {list or "None"}
+            - Missing work (task requires something not in journal): {list or "None"}
