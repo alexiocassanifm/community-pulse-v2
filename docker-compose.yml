@@ -1,0 +1,53 @@
+services:
+  mongodb:
+    image: mongo:7
+    container_name: community-pulse-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ ping: 1 }).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  app:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: community-pulse-app
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      MONGO_URI: ${MONGO_URI:-mongodb://mongodb:27017/community_pulse}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      PORT: ${PORT:-3000}
+      APP_ORIGIN: ${APP_ORIGIN:-http://localhost:3000}
+      NODE_ENV: ${NODE_ENV:-development}
+    ports:
+      - "3000:3000"
+
+  mongo-express:
+    image: mongo-express:1.0.2
+    container_name: community-pulse-mongo-express
+    restart: unless-stopped
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    environment:
+      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_PORT: 27017
+      ME_CONFIG_BASICAUTH: "false"
+    ports:
+      - "8081:8081"
+    profiles:
+      - tools
+
+volumes:
+  mongo_data:
+    name: community_pulse_mongo_data
