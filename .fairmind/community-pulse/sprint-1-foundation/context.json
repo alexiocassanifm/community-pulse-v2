@@ -1,0 +1,26 @@
+{
+  "project_name": "Community Pulse",
+  "project_slug": "community-pulse",
+  "project_id": "6a143e7317fa38cecf7eb195",
+  "session_name": "Sprint 1 — Foundation",
+  "session_slug": "sprint-1-foundation",
+  "session_mindstreamId": "SESSION-2026-0192",
+  "session_id": "6a15a6cf614ab03b81a92994",
+  "base_path": ".fairmind/community-pulse/sprint-1-foundation",
+  "user_story": {
+    "mindstreamId": "US-2026-0589",
+    "id": "6a15b1ea614ab03b81a92998",
+    "title": "Setup pnpm Monorepo Workspace with Three Workspaces and Docker Compose"
+  },
+  "task": {
+    "mindstreamId": "TASK-2026-0966",
+    "id": "6a15c19d6c2398cc3a8cda76",
+    "title": "Setup pnpm Monorepo Workspace with Three Workspaces and Docker Compose"
+  },
+  "need": {
+    "mindstreamId": "NEED-2026-0275",
+    "id": "6a15abd0614ab03b81a92995",
+    "title": "E1 - Monorepo Foundation & Shared Contracts"
+  },
+  "created_at": "2026-05-26T18:30:00"
+}
