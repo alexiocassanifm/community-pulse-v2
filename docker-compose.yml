@@ -31,6 +31,12 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
   mongo-express:
     image: mongo-express:1.0.2

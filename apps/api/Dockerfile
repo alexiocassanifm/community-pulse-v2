@@ -32,7 +32,8 @@ RUN pnpm --filter @community-pulse/shared run typecheck \
 FROM node:20-alpine AS runtime
 WORKDIR /app
 
-RUN corepack enable
+RUN corepack enable \
+ && apk add --no-cache curl
 ENV NODE_ENV=production
 
 # Copy workspace metadata and source needed at runtime
@@ -53,6 +54,6 @@ RUN chown -R node:node /app
 USER node
 
 EXPOSE 3000
-# Run the placeholder TypeScript entry via tsx. The real Hono server with a
-# compiled bundle lands in TASK-2026-0968.
-CMD ["pnpm", "--filter", "@community-pulse/api", "run", "dev"]
+# Execute the TypeScript entry directly via tsx. A compiled-bundle CMD
+# is tracked under TASK-2026-0968.
+CMD ["pnpm", "--filter", "@community-pulse/api", "run", "start"]
